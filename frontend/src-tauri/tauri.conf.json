@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Personal AI Agent",
+  "version": "1.0.0",
+  "identifier": "com.personalai.agent",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.ico", "icons/icon.png"], "externalBin": ["binaries/api"], "resources": ["resources/credentials.json", "resources/token.json", "resources/tasks.json"] },
+  "app": {
+    "windows": [{ "title": "Personal AI Agent", "width": 1180, "height": 760, "minWidth": 820, "minHeight": 600 }]
+  }
+}

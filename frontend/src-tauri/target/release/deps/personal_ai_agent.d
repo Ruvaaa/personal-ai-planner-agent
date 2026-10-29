@@ -1,0 +1,15 @@
+C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\deps\personal_ai_agent.d: src\main.rs C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\assets\index-DQtAtb9u.js \\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\dfd593aca3314d217e503acb582bce2676a79c45e852d34d58d563499a574b48.js C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\index.html \\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\38f06f88f43402766f84e6daeb3f02a27914e0ede39a9dccfc39c13f795b7aac.html C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\assets\index-CoJKyKU-.css \\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\0931c87cec0a0519bb1403bff3d5d349ecf3e7b7372fd76db8cefd7cfe8d85aa.css
+
+C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\deps\personal_ai_agent.exe: src\main.rs C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\assets\index-DQtAtb9u.js \\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\dfd593aca3314d217e503acb582bce2676a79c45e852d34d58d563499a574b48.js C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\index.html \\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\38f06f88f43402766f84e6daeb3f02a27914e0ede39a9dccfc39c13f795b7aac.html C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\assets\index-CoJKyKU-.css \\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\0931c87cec0a0519bb1403bff3d5d349ecf3e7b7372fd76db8cefd7cfe8d85aa.css
+
+src\main.rs:
+C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\assets\index-DQtAtb9u.js:
+\\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\dfd593aca3314d217e503acb582bce2676a79c45e852d34d58d563499a574b48.js:
+C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\index.html:
+\\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\38f06f88f43402766f84e6daeb3f02a27914e0ede39a9dccfc39c13f795b7aac.html:
+C:\pythonProjects\personal-ai-agent\frontend\src-tauri\../dist\assets\index-CoJKyKU-.css:
+\\?\C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\build\personal-ai-agent-352010d3f633e937\out\tauri-codegen-assets\0931c87cec0a0519bb1403bff3d5d349ecf3e7b7372fd76db8cefd7cfe8d85aa.css:
+
+# env-dep:CARGO_PKG_AUTHORS=Personal AI Agent
+# env-dep:CARGO_PKG_DESCRIPTION=Local personal planning desktop app
+# env-dep:CARGO_PKG_NAME=personal-ai-agent

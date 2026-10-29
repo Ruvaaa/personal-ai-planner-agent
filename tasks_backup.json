@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1,
+    "title": "Finish AquaVision",
+    "deadline": "2026-10-21",
+    "priority": "high",
+    "duration_minutes": 180,
+    "status": "pending",
+    "created_at": "2026-10-17T21:08:01.938797+02:00",
+    "completed_at": null
+  }
+]
