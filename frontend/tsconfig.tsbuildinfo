@@ -1,1 +1,1 @@
-{"root":["./src/app.new.tsx","./src/app.tsx","./src/main.tsx"],"version":"5.9.3"}
+{"root":["./src/app.new.tsx","./src/app.tsx","./src/calendarpage.tsx","./src/dailyoverview.tsx","./src/desktopwidget.tsx","./src/emailpage.tsx","./src/productivitypages.tsx","./src/datetime.ts","./src/main.tsx"],"version":"5.9.3"}

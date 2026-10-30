@@ -4,6 +4,7 @@ C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\debug\deps\libpers
 
 src\main.rs:
 
+# env-dep:CARGO_MANIFEST_DIR=C:\\pythonProjects\\personal-ai-agent\\frontend\\src-tauri
 # env-dep:CARGO_PKG_AUTHORS=Personal AI Agent
 # env-dep:CARGO_PKG_DESCRIPTION=Local personal planning desktop app
 # env-dep:CARGO_PKG_NAME=personal-ai-agent

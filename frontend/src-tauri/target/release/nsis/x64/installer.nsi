@@ -62,7 +62,7 @@ ${StrLoc}
 !define MANUKEY "Software\${MANUFACTURER}"
 !define MANUPRODUCTKEY "${MANUKEY}\${PRODUCTNAME}"
 !define UNINSTALLERSIGNCOMMAND ""
-!define ESTIMATEDSIZE "47078"
+!define ESTIMATEDSIZE "52906"
 !define STARTMENUFOLDER ""
 
 Var PassiveMode
@@ -683,13 +683,9 @@ Section Install
   File "${MAINBINARYSRCPATH}"
 
   ; Copy resources
-    CreateDirectory "$INSTDIR\resources"
-    File /a "/oname=resources\credentials.json" "C:\pythonProjects\personal-ai-agent\frontend\src-tauri\resources\credentials.json"
-    File /a "/oname=resources\tasks.json" "C:\pythonProjects\personal-ai-agent\frontend\src-tauri\resources\tasks.json"
-    File /a "/oname=resources\token.json" "C:\pythonProjects\personal-ai-agent\frontend\src-tauri\resources\token.json"
 
   ; Copy external binaries
-    File /a "/oname=api.exe" "C:\pythonProjects\personal-ai-agent\frontend\src-tauri\binaries\api-x86_64-pc-windows-msvc.exe"
+    File /a "/oname=api.exe" "C:\pythonProjects\personal-ai-agent\frontend\src-tauri\binaries-staging\api-x86_64-pc-windows-msvc.exe"
 
   ; Create file associations
 
@@ -806,9 +802,6 @@ Section Uninstall
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"
 
   ; Delete resources
-    Delete "$INSTDIR\resources\credentials.json"
-    Delete "$INSTDIR\resources\tasks.json"
-    Delete "$INSTDIR\resources\token.json"
 
   ; Delete external binaries
     Delete "$INSTDIR\api.exe"
@@ -821,7 +814,6 @@ Section Uninstall
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
-  RMDir /REBOOTOK "$INSTDIR\resources"
   RMDir "$INSTDIR"
 
   ; Remove shortcuts if not updating

@@ -9,7 +9,7 @@
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../dist"
   },
-  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.ico", "icons/icon.png"], "externalBin": ["binaries/api"], "resources": ["resources/credentials.json", "resources/token.json", "resources/tasks.json"] },
+  "bundle": { "active": true, "targets": "all", "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"], "externalBin": ["binaries/api"], "resources": [] },
   "app": {
     "windows": [{ "title": "Personal AI Agent", "width": 1180, "height": 760, "minWidth": 820, "minHeight": 600 }]
   }

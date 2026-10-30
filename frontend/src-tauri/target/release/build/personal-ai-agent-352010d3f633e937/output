@@ -10,10 +10,7 @@ cargo:PERMISSION_FILES_PATH=C:\pythonProjects\personal-ai-agent\frontend\src-tau
 cargo:rerun-if-changed=C:\pythonProjects\personal-ai-agent\frontend\src-tauri\capabilities
 cargo:rerun-if-env-changed=REMOVE_UNUSED_COMMANDS
 cargo:rustc-env=TAURI_ENV_TARGET_TRIPLE=x86_64-pc-windows-msvc
-cargo:rerun-if-changed=binaries\api-x86_64-pc-windows-msvc.exe
-cargo:rerun-if-changed=resources\credentials.json
-cargo:rerun-if-changed=resources\token.json
-cargo:rerun-if-changed=resources\tasks.json
+cargo:rerun-if-changed=binaries-staging\api-x86_64-pc-windows-msvc.exe
 package.metadata does not exist
 Microsoft (R) Windows (R) Resource Compiler Version 10.0.10011.16384
 Copyright (C) Microsoft Corporation.  All rights reserved.

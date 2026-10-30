@@ -2,7 +2,7 @@
   "name": "personal-ai-agent-desktop",
   "private": true,
   "scripts": {
-    "test": "python -m unittest test_api.py",
+    "test": "python -m unittest test_api.py test_whatsapp.py",
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
     "tauri:dev": "npm --prefix frontend run tauri dev",

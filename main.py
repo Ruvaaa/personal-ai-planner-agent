@@ -21,11 +21,17 @@ Useful commands:
     /exit                  Exit
 """
 
+import base64
+import hashlib
 import json
+import logging
+import os
 import re
+import tempfile
+import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -33,7 +39,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from dotenv import load_dotenv
 
 
 # ------------------------------ Configuration ------------------------------
@@ -42,10 +48,8 @@ MODEL = "qwen3:4b"
 OLLAMA_URL = "http://localhost:11434/api/chat"
 TIMEZONE = ZoneInfo("Africa/Harare")
 
-import os
-import threading
-
 BASE_DIR = Path(os.environ.get("PERSONAL_AI_AGENT_DATA_DIR", Path(__file__).resolve().parent))
+load_dotenv(BASE_DIR / ".env")
 CREDENTIALS_FILE = BASE_DIR / "credentials.json"
 TOKEN_FILE = BASE_DIR / "token.json"
 TASKS_FILE = BASE_DIR / "tasks.json"
@@ -55,6 +59,11 @@ MAX_HISTORY_MESSAGES = 12
 calendar_service = None
 conversation = []
 _task_lock = threading.RLock()
+logger = logging.getLogger(__name__)
+calendar_credentials = None
+calendar_connection_error = None
+_calendar_lock = threading.RLock()
+_calendar_saved_token = None
 
 
 # --------------------------------- Dates ------------------------------------
@@ -125,12 +134,20 @@ def parse_time(value):
 
 # ----------------------------- Google Calendar -----------------------------
 
-def connect_google_calendar():
-    global calendar_service
+def connect_google_calendar(interactive=True):
+    global calendar_service, calendar_credentials, calendar_connection_error, _calendar_saved_token
+    with _calendar_lock:
+        calendar_service = None
+        calendar_credentials = None
+        calendar_connection_error = None
+        _calendar_saved_token = None
 
     if not CREDENTIALS_FILE.exists():
-        print(f"\nWARNING:  Google Calendar credentials file not found:\n   {CREDENTIALS_FILE}")
-        print("Calendar features will be unavailable; local task management still works.")
+        calendar_connection_error = (
+            f"Google Calendar OAuth credentials were not found at {CREDENTIALS_FILE}. "
+            "Place your Google OAuth desktop-client credentials.json there, then choose Reconnect calendar."
+        )
+        logger.warning("Google Calendar OAuth credentials are not present in the configured data directory.")
         return False
 
     credentials = None
@@ -138,35 +155,161 @@ def connect_google_calendar():
         try:
             credentials = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
         except Exception as exc:
-            print(f"WARNING:  Could not read token.json: {exc}")
+            logger.warning("Could not read the Google Calendar token (%s).", type(exc).__name__)
+
+    if credentials and not credentials.has_scopes(SCOPES):
+        logger.info("Saved Google Calendar authorization does not include the required events scope.")
+        credentials = None
 
     if credentials and credentials.expired and credentials.refresh_token:
         try:
             credentials.refresh(Request())
+            _save_calendar_credentials(credentials)
         except Exception as exc:
-            print(f"WARNING:  Could not refresh Google Calendar token: {exc}")
+            calendar_connection_error = _calendar_failure_message(exc)
+            logger.warning("Could not refresh the Google Calendar token (%s).", type(exc).__name__)
             credentials = None
 
     if not credentials or not credentials.valid:
+        if not interactive:
+            if calendar_connection_error is None:
+                calendar_connection_error = (
+                    "Google Calendar authorization is missing, expired, or needs additional permission. "
+                    "Choose Reconnect calendar in Settings."
+                )
+            return False
         try:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CREDENTIALS_FILE), SCOPES
-            )
+            flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
             credentials = flow.run_local_server(port=0)
-            TOKEN_FILE.write_text(credentials.to_json(), encoding="utf-8")
+            _save_calendar_credentials(credentials)
         except Exception as exc:
-            print(f"WARNING:  Google Calendar sign-in failed: {exc}")
-            print("Calendar features will be unavailable for this session.")
+            calendar_connection_error = _calendar_failure_message(exc)
+            logger.warning("Google Calendar sign-in failed (%s).", type(exc).__name__)
             return False
 
     try:
-        calendar_service = build("calendar", "v3", credentials=credentials)
-        print("OK: Google Calendar connected.")
+        service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
+        service.events().list(
+            calendarId="primary",
+            timeMin=now_local().isoformat(),
+            maxResults=1,
+        ).execute()
+        with _calendar_lock:
+            calendar_credentials = credentials
+            _calendar_saved_token = credentials.token
+            calendar_service = service
+            calendar_connection_error = None
         return True
     except Exception as exc:
-        print(f"WARNING:  Could not connect to Google Calendar: {exc}")
-        calendar_service = None
+        calendar_connection_error = _calendar_failure_message(exc)
+        logger.warning("Could not verify Google Calendar access (%s).", type(exc).__name__)
         return False
+
+
+def _save_calendar_credentials(credentials):
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=TOKEN_FILE.parent,
+            prefix=".token-",
+            suffix=".tmp",
+            delete=False,
+        ) as token_file:
+            token_file.write(credentials.to_json())
+            temporary_path = Path(token_file.name)
+        os.replace(temporary_path, TOKEN_FILE)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _persist_refreshed_calendar_credentials():
+    global _calendar_saved_token
+    with _calendar_lock:
+        credentials = calendar_credentials
+        if not credentials or not credentials.valid or credentials.token == _calendar_saved_token:
+            return
+        try:
+            _save_calendar_credentials(credentials)
+        except OSError as exc:
+            logger.warning("Could not persist refreshed Google Calendar authorization (%s).", type(exc).__name__)
+            return
+        _calendar_saved_token = credentials.token
+
+
+def _calendar_failure_message(exc):
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status in {401, 403}:
+        return (
+            f"Google Calendar rejected authorization (HTTP {status}). Reconnect calendar in Settings "
+            "to renew permission for calendar events."
+        )
+    if isinstance(status, int):
+        return f"Google Calendar request failed (HTTP {status}). Check your connection and try again."
+    return (
+        f"Google Calendar could not be reached ({type(exc).__name__}). Check your internet connection "
+        "and try again; reconnect calendar if the problem continues."
+    )
+
+
+def record_calendar_failure(exc):
+    global calendar_service, calendar_connection_error
+    message = _calendar_failure_message(exc)
+    with _calendar_lock:
+        calendar_connection_error = message
+        if getattr(getattr(exc, "resp", None), "status", None) in {401, 403}:
+            calendar_service = None
+    return message
+
+
+def calendar_status():
+    return {
+        "connected": calendar_service is not None,
+        "credentials_present": CREDENTIALS_FILE.is_file(),
+        "authorization_present": TOKEN_FILE.is_file(),
+        "credentials_location": str(CREDENTIALS_FILE),
+        "error": calendar_connection_error,
+    }
+
+
+def _execute_calendar_request(request):
+    global calendar_connection_error
+    result = request.execute()
+    _persist_refreshed_calendar_credentials()
+    calendar_connection_error = None
+    return result
+
+
+def _event_idempotency_id(title, start_dt, end_dt, description, idempotency_key=None):
+    if idempotency_key:
+        identity = idempotency_key
+    else:
+        identity = json.dumps(
+            {
+                "title": title.strip(),
+                "start": start_dt.astimezone(TIMEZONE).isoformat(),
+                "end": end_dt.astimezone(TIMEZONE).isoformat(),
+                "description": description,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return base64.b32hexencode(hashlib.sha256(identity.encode("utf-8")).digest()).decode("ascii").rstrip("=").lower()
+
+
+def _calendar_event_matches(event, title, start_dt, end_dt, description):
+    if event.get("summary", "") != title or event.get("description", "") != description:
+        return False
+    try:
+        actual_start = datetime.fromisoformat(event["start"]["dateTime"].replace("Z", "+00:00"))
+        actual_end = datetime.fromisoformat(event["end"]["dateTime"].replace("Z", "+00:00"))
+    except (KeyError, AttributeError, TypeError, ValueError):
+        return False
+    return actual_start == start_dt and actual_end == end_dt
 
 
 def list_calendar_events(days=14):
@@ -174,44 +317,55 @@ def list_calendar_events(days=14):
         return None
 
     start = now_local()
-    end = start + timedelta(days=max(1, min(int(days), 60)))
+    end = start + timedelta(days=max(1, min(int(days), 365)))
 
     try:
-        response = calendar_service.events().list(
-            calendarId="primary",
-            timeMin=start.isoformat(),
-            timeMax=end.isoformat(),
-            maxResults=100,
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
+        request = calendar_service.events().list(
+            calendarId="primary", timeMin=start.isoformat(), timeMax=end.isoformat(),
+            maxResults=250, singleEvents=True, orderBy="startTime",
+        )
         events = []
-        for item in response.get("items", []):
-            start_info = item.get("start", {})
-            start_text = start_info.get("dateTime") or start_info.get("date")
-            if not start_text:
-                continue
-            try:
-                if "T" in start_text:
-                    parsed = datetime.fromisoformat(start_text.replace("Z", "+00:00"))
-                    if parsed.tzinfo is None:
-                        parsed = parsed.replace(tzinfo=TIMEZONE)
-                    display = parsed.astimezone(TIMEZONE).strftime("%a %d %b, %I:%M %p")
-                else:
-                    display = date.fromisoformat(start_text).strftime("%a %d %b (all day)")
-            except ValueError:
-                display = start_text
-            events.append({
-                "id": item.get("id"),
-                "summary": item.get("summary", "(Untitled event)"),
-                "start": start_text,
-                "display_start": display,
-                "end": item.get("end", {}).get("dateTime") or item.get("end", {}).get("date"),
-                "description": item.get("description", ""),
-            })
+        while request is not None:
+            response = _execute_calendar_request(request)
+            for item in response.get("items", []):
+                start_info = item.get("start", {})
+                start_text = start_info.get("dateTime") or start_info.get("date")
+                if not start_text:
+                    continue
+                try:
+                    if "T" in start_text:
+                        parsed = datetime.fromisoformat(start_text.replace("Z", "+00:00"))
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=TIMEZONE)
+                        display = parsed.astimezone(TIMEZONE).strftime("%a %d %b, %I:%M %p CAT")
+                    else:
+                        display = date.fromisoformat(start_text).strftime("%a %d %b (all day)")
+                except ValueError:
+                    display = start_text
+                events.append({
+                    "id": item.get("id"),
+                    "summary": item.get("summary", "(Untitled event)"),
+                    "start": start_text,
+                    "display_start": display,
+                    "end": item.get("end", {}).get("dateTime") or item.get("end", {}).get("date"),
+                    "description": item.get("description", ""),
+                    "location": item.get("location", ""),
+                    "htmlLink": item.get("htmlLink"),
+                })
+            page_token = response.get("nextPageToken")
+            request = calendar_service.events().list(
+                calendarId="primary",
+                timeMin=start.isoformat(),
+                timeMax=end.isoformat(),
+                maxResults=250,
+                singleEvents=True,
+                orderBy="startTime",
+                pageToken=page_token,
+            ) if page_token else None
         return events
-    except (HttpError, Exception) as exc:
-        print(f"WARNING:  Could not fetch calendar events: {exc}")
+    except Exception as exc:
+        record_calendar_failure(exc)
+        logger.warning("Could not fetch Google Calendar events (%s).", type(exc).__name__)
         return None
 
 
@@ -219,7 +373,7 @@ def update_calendar_event(event_id, title=None, start_dt=None, end_dt=None, desc
     if calendar_service is None:
         return False, "Google Calendar is not connected."
     try:
-        existing = calendar_service.events().get(calendarId="primary", eventId=event_id).execute()
+        existing = _execute_calendar_request(calendar_service.events().get(calendarId="primary", eventId=event_id))
         if title is not None:
             existing["summary"] = title
         if description is not None:
@@ -228,25 +382,27 @@ def update_calendar_event(event_id, title=None, start_dt=None, end_dt=None, desc
             existing["start"] = {"dateTime": start_dt.isoformat(), "timeZone": str(TIMEZONE)}
         if end_dt is not None:
             existing["end"] = {"dateTime": end_dt.isoformat(), "timeZone": str(TIMEZONE)}
-        updated = calendar_service.events().update(calendarId="primary", eventId=event_id, body=existing).execute()
+        updated = _execute_calendar_request(
+            calendar_service.events().update(calendarId="primary", eventId=event_id, body=existing)
+        )
         return True, updated
     except Exception as exc:
-        return False, f"Google Calendar error: {exc}"
+        return False, record_calendar_failure(exc)
 
 
 def delete_calendar_event(event_id):
     if calendar_service is None:
         return False, "Google Calendar is not connected."
     try:
-        calendar_service.events().delete(calendarId="primary", eventId=event_id).execute()
+        _execute_calendar_request(calendar_service.events().delete(calendarId="primary", eventId=event_id))
         return True, "Event deleted."
     except Exception as exc:
-        return False, f"Google Calendar error: {exc}"
+        return False, record_calendar_failure(exc)
 
 
-def create_calendar_event(title, start_dt, end_dt, description=""):
+def create_calendar_event(title, start_dt, end_dt, description="", idempotency_key=None):
     if calendar_service is None:
-        return False, "Google Calendar is not connected."
+        return False, calendar_connection_error or "Google Calendar is disconnected. Reconnect calendar in Settings."
 
     body = {
         "summary": title,
@@ -254,13 +410,50 @@ def create_calendar_event(title, start_dt, end_dt, description=""):
         "start": {"dateTime": start_dt.isoformat(), "timeZone": str(TIMEZONE)},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": str(TIMEZONE)},
     }
+    event_id = _event_idempotency_id(title, start_dt, end_dt, description, idempotency_key)
+    body["id"] = event_id
     try:
-        created = calendar_service.events().insert(
-            calendarId="primary", body=body
-        ).execute()
-        return True, created.get("htmlLink", "Event created.")
+        created = _execute_calendar_request(
+            calendar_service.events().insert(calendarId="primary", body=body)
+        )
     except Exception as exc:
-        return False, f"Google Calendar error: {exc}"
+        status = getattr(getattr(exc, "resp", None), "status", None)
+        if status != 409:
+            return False, record_calendar_failure(exc)
+        try:
+            created = _execute_calendar_request(
+                calendar_service.events().get(calendarId="primary", eventId=event_id)
+            )
+        except Exception as lookup_error:
+            return False, record_calendar_failure(lookup_error)
+        if not _calendar_event_matches(created, title, start_dt, end_dt, description):
+            return False, "Google Calendar already has this request ID for different event details."
+
+    if not isinstance(created, dict) or not created.get("id"):
+        try:
+            created = _execute_calendar_request(
+                calendar_service.events().get(calendarId="primary", eventId=event_id)
+            )
+        except Exception as exc:
+            return False, (
+                "Google Calendar returned no verifiable event ID. "
+                f"The event could not be confirmed ({record_calendar_failure(exc)})."
+            )
+    if (
+        not isinstance(created, dict)
+        or not created.get("id")
+        or not _calendar_event_matches(created, title, start_dt, end_dt, description)
+    ):
+        return False, "Google Calendar did not return a verifiable event matching the requested details."
+    event = {
+        "id": created["id"],
+        "summary": created.get("summary", title),
+        "start": created.get("start", {}).get("dateTime"),
+        "end": created.get("end", {}).get("dateTime"),
+    }
+    if created.get("htmlLink"):
+        event["htmlLink"] = created["htmlLink"]
+    return True, event
 
 
 # ---------------------------------- Tasks -----------------------------------
@@ -272,12 +465,13 @@ def load_tasks():
         data = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
         return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError) as exc:
-        print(f"WARNING:  Could not read tasks.json: {exc}")
+        logger.warning("Could not read the task file (%s).", type(exc).__name__)
         return []
 
 
 def save_tasks(tasks):
     with _task_lock:
+        TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
         temporary = TASKS_FILE.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(tasks, indent=2, ensure_ascii=False), encoding="utf-8")
         temporary.replace(TASKS_FILE)
@@ -287,40 +481,62 @@ def next_task_id(tasks):
     return max((int(task.get("id", 0)) for task in tasks), default=0) + 1
 
 
-def add_task(title, deadline=None, priority="medium", duration_minutes=60):
-    title = title.strip()
-    if not title:
-        return None, "Task title cannot be empty."
+def add_task(title, deadline=None, priority="medium", duration_minutes=60, project_id=None, depends_on=None,
+             source_email_id=None, description="", scheduled_at=None):
+    with _task_lock:
+        title = title.strip()
+        if not title:
+            return None, "Task title cannot be empty."
 
-    priority = priority.lower()
-    if priority not in {"low", "medium", "high"}:
-        priority = "medium"
+        priority = priority.lower()
+        if priority not in {"low", "medium", "high"}:
+            priority = "medium"
 
-    if deadline:
-        parsed = parse_date(deadline)
-        if parsed is None:
-            return None, "I couldn't understand that deadline. Try YYYY-MM-DD or '21 October 2026'."
-        deadline = parsed
+        if deadline:
+            parsed = parse_date(deadline)
+            if parsed is None:
+                return None, "I couldn't understand that deadline. Try YYYY-MM-DD or '21 October 2026'."
+            deadline = parsed
+        if scheduled_at:
+            try:
+                scheduled = datetime.fromisoformat(str(scheduled_at).replace("Z", "+00:00"))
+            except ValueError:
+                return None, "Scheduled time must be an ISO 8601 date-time."
+            if scheduled.tzinfo is None:
+                scheduled = scheduled.replace(tzinfo=TIMEZONE)
+            scheduled_at = scheduled.isoformat()
 
-    try:
-        duration_minutes = max(5, min(int(duration_minutes), 1440))
-    except (TypeError, ValueError):
-        duration_minutes = 60
+        try:
+            duration_minutes = max(5, min(int(duration_minutes), 1440))
+        except (TypeError, ValueError):
+            duration_minutes = 60
 
-    tasks = load_tasks()
-    task = {
-        "id": next_task_id(tasks),
-        "title": title,
-        "deadline": deadline,
-        "priority": priority,
-        "duration_minutes": duration_minutes,
-        "status": "pending",
-        "created_at": now_local().isoformat(),
-        "completed_at": None,
-    }
-    tasks.append(task)
-    save_tasks(tasks)
-    return task, None
+        tasks = load_tasks()
+        try:
+            dependencies = list(dict.fromkeys(int(item) for item in (depends_on or [])))
+        except (TypeError, ValueError):
+            return None, "Dependencies must be valid task IDs."
+        known_ids = {int(item.get("id", -1)) for item in tasks}
+        if any(item not in known_ids for item in dependencies):
+            return None, "A dependency task was not found."
+        task = {
+            "id": next_task_id(tasks),
+            "title": title,
+            "description": str(description or "").strip()[:4000],
+            "deadline": deadline,
+            "scheduled_at": scheduled_at,
+            "priority": priority,
+            "duration_minutes": duration_minutes,
+            "project_id": project_id,
+            "depends_on": dependencies,
+            "source_email_id": source_email_id,
+            "status": "pending",
+            "created_at": now_local().isoformat(),
+            "completed_at": None,
+        }
+        tasks.append(task)
+        save_tasks(tasks)
+        return task, None
 
 
 def find_task(task_ref, include_completed=True):
@@ -346,30 +562,31 @@ def find_task(task_ref, include_completed=True):
 
 
 def complete_task(task_ref):
-    tasks = load_tasks()
-    ref = str(task_ref).strip().lower()
-    match = None
+    with _task_lock:
+        tasks = load_tasks()
+        ref = str(task_ref).strip().lower()
+        match = None
 
-    if ref.isdigit():
-        match = next((t for t in tasks if int(t.get("id", -1)) == int(ref)), None)
-    else:
-        matches = [t for t in tasks if ref and ref in t.get("title", "").lower()
-                   and t.get("status") != "completed"]
-        if len(matches) == 1:
-            match = matches[0]
-        elif len(matches) > 1:
-            return None, "More than one task matches. Use its task ID."
+        if ref.isdigit():
+            match = next((t for t in tasks if int(t.get("id", -1)) == int(ref)), None)
+        else:
+            matches = [t for t in tasks if ref and ref in t.get("title", "").lower()
+                       and t.get("status") != "completed"]
+            if len(matches) == 1:
+                match = matches[0]
+            elif len(matches) > 1:
+                return None, "More than one task matches. Use its task ID."
 
-    if not match:
-        return None, "I couldn't find that task. Use /tasks to see task IDs."
+        if not match:
+            return None, "I couldn't find that task. Use /tasks to see task IDs."
 
-    if match.get("status") == "completed":
-        return match, "That task is already marked complete."
+        if match.get("status") == "completed":
+            return match, "That task is already marked complete."
 
-    match["status"] = "completed"
-    match["completed_at"] = now_local().isoformat()
-    save_tasks(tasks)
-    return match, None
+        match["status"] = "completed"
+        match["completed_at"] = now_local().isoformat()
+        save_tasks(tasks)
+        return match, None
 
 
 def update_task(task_id, updates):
@@ -383,12 +600,26 @@ def update_task(task_id, updates):
             if not title:
                 return None, "Task title cannot be empty."
             task["title"] = title
+        if "description" in updates:
+            task["description"] = str(updates["description"] or "").strip()[:4000]
         if "deadline" in updates:
             deadline = updates["deadline"]
             parsed = parse_date(deadline) if deadline else None
             if deadline and parsed is None:
                 return None, "Invalid deadline."
             task["deadline"] = parsed
+        if "scheduled_at" in updates:
+            scheduled_at = updates["scheduled_at"]
+            if scheduled_at:
+                try:
+                    scheduled = datetime.fromisoformat(str(scheduled_at).replace("Z", "+00:00"))
+                except ValueError:
+                    return None, "Scheduled time must be an ISO 8601 date-time."
+                if scheduled.tzinfo is None:
+                    scheduled = scheduled.replace(tzinfo=TIMEZONE)
+                task["scheduled_at"] = scheduled.isoformat()
+            else:
+                task["scheduled_at"] = None
         if "priority" in updates:
             priority = str(updates["priority"]).lower()
             if priority not in {"low", "medium", "high"}:
@@ -402,6 +633,22 @@ def update_task(task_id, updates):
             if not 5 <= duration <= 1440:
                 return None, "Duration must be between 5 and 1440 minutes."
             task["duration_minutes"] = duration
+        if "project_id" in updates:
+            task["project_id"] = updates["project_id"] or None
+        if "depends_on" in updates:
+            dependencies = updates["depends_on"]
+            if not isinstance(dependencies, list):
+                return None, "Dependencies must be a list of task IDs."
+            try:
+                dependencies = list(dict.fromkeys(int(item) for item in dependencies))
+            except (TypeError, ValueError):
+                return None, "Dependencies must be valid task IDs."
+            if int(task_id) in dependencies:
+                return None, "A task cannot depend on itself."
+            known_ids = {int(item.get("id", -1)) for item in tasks}
+            if any(item not in known_ids for item in dependencies):
+                return None, "A dependency task was not found."
+            task["depends_on"] = dependencies
         task["updated_at"] = now_local().isoformat()
         save_tasks(tasks)
         return task, None
@@ -1102,7 +1349,7 @@ def main():
         save_tasks([])
         print("Created an empty tasks.json file.")
 
-    connect_google_calendar()
+    connect_google_calendar(interactive=True)
     print("Type /help for commands. Type /exit to quit.\n")
 
     while True:

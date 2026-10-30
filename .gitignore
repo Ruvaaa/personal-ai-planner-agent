@@ -1,14 +1,32 @@
 # Local environment secrets
 .env
 .env.*
+!.env.example
 
 # Python
 __pycache__/
 *.pyc
+.venv/
+venv/
+env/
 
 # Node / frontend
 node_modules/
 dist/
+build/
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/api*.exe
 
 # Local app data
 *.log
+ngrok/whatsapp-traffic-policy.yml
+**/credentials.json
+**/token.json
+**/*_token.json
+**/tasks.json
+**/tasks_backup.json
+**/productivity.json
+**/gemini_settings.json
+**/gmail_cache.sqlite3*
+**/whatsapp_state.sqlite3*
+frontend/src-tauri/resources/

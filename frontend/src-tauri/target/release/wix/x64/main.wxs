@@ -116,10 +116,10 @@
             <Component Id="Path" Guid="18c18496-bc56-5301-b2d3-9dfb23c2bdd9" Win64="$(var.Win64)">
                 <File Id="Path" Source="C:\pythonProjects\personal-ai-agent\frontend\src-tauri\target\release\personal-ai-agent.exe" KeyPath="yes" Checksum="yes"/>
 </Component>
-<Component Id="api.exe" Guid="4c73caac-96e5-405c-a9c4-bdfa41c439ee" Win64="$(var.Win64)">
+<Component Id="api.exe" Guid="6ea80169-ac3c-432e-a93e-ec31f281d453" Win64="$(var.Win64)">
                 <File Id="Bin_api.exe" Source="C:\Users\user\AppData\Local\Temp\api.exe" KeyPath="yes"/>
             </Component>
-            <Directory Id="I7c19241d3aff45969d06fc150e782550" Name="resources"><Component Id="I9c5f33ddd2d9464f9fd1d2b4b9186082" Guid="60c2248f-3306-46e8-a25e-eb20bb2c5fa7" Win64="$(var.Win64)" KeyPath="yes"><File Id="PathFile_I9c5f33ddd2d9464f9fd1d2b4b9186082" Source="C:\pythonProjects\personal-ai-agent\frontend\src-tauri\resources\credentials.json" Name="credentials.json" /></Component><Component Id="I12f8902dec1246b8aea9ed0f92e2dd8f" Guid="a39bbcb6-e915-42d3-a582-f77820ee9811" Win64="$(var.Win64)" KeyPath="yes"><File Id="PathFile_I12f8902dec1246b8aea9ed0f92e2dd8f" Source="C:\pythonProjects\personal-ai-agent\frontend\src-tauri\resources\token.json" Name="token.json" /></Component><Component Id="Iaca379d2d277483dab6b723b5e56dc46" Guid="24d2821d-094a-4101-9fcd-a3e29d0cd708" Win64="$(var.Win64)" KeyPath="yes"><File Id="PathFile_Iaca379d2d277483dab6b723b5e56dc46" Source="C:\pythonProjects\personal-ai-agent\frontend\src-tauri\resources\tasks.json" Name="tasks.json" /></Component></Directory>
+            
             <Component Id="CMP_UninstallShortcut" Guid="*">
 
                 <Shortcut Id="UninstallShortcut"
@@ -167,9 +167,6 @@
 
             <ComponentRef Id="RegistryEntries"/>
 
-<ComponentRef Id="I9c5f33ddd2d9464f9fd1d2b4b9186082"/>
-<ComponentRef Id="I12f8902dec1246b8aea9ed0f92e2dd8f"/>
-<ComponentRef Id="Iaca379d2d277483dab6b723b5e56dc46"/>
 
             <Feature Id="ShortcutsFeature"
                 Title="Shortcuts"
